@@ -1,0 +1,64 @@
+---
+- name: Enterprise service + monitoring + MOTD (Debian & CentOS, containerized)
+  hosts: linux
+  become: true
+  vars_files:
+       - config.yaml
+
+  tasks:
+     - name: Install Docker (Debian family)
+       ansible.builtin.apt:
+         name: [docker.io, curl]
+         state: present
+         update_cache: true
+       when: ansible_os_family == "Debian"
+
+     - name: Add Docker CE repo (RedHat family)
+       ansible.builtin.get_url:
+         url: https://download.docker.com/linux/centos/docker-ce.repo
+         dest: /etc/yum.repos.d/docker-ce.repo
+       when: ansible_os_family == "RedHat"
+
+     - name: Install Docker (RedHat family)
+       ansible.builtin.package:
+         name:
+            - docker-ce
+            - docker-ce-cli
+            - containerd.io
+            - curl
+         state: present
+       when: ansible_os_family == "RedHat"
+
+     - name: Start and enable Docker
+       ansible.builtin.service:
+         name: docker
+         state: started
+         enabled: true
+
+     - name: Deploy custom index page
+       ansible.builtin.copy:
+         dest: /opt/index.html
+         content: "<h1>Nginx on {{ ansible_hostname }} ({{ ansible_distribution }}) - Managed by {{ motd_user }}</h1>\n"
+         mode: "0644"
+
+     - name: Run Nginx container
+       ansible.builtin.shell: |
+         docker rm -f {{ nginx_container }} 2>/dev/null || true
+         docker run -d --name {{ nginx_container }} --restart always \
+           -p {{ nginx_port }}:80 -v /opt/index.html:/usr/share/nginx/html/index.html:ro \
+           {{ nginx_image }}
+       changed_when: true
+
+     - name: Run Node Exporter container
+       ansible.builtin.shell: |
+         docker rm -f {{ monitor_container }} 2>/dev/null || true
+         docker run -d --name {{ monitor_container }} --restart always \
+           --net host --pid host -v /:/host:ro,rslave \
+           {{ monitor_image }} --path.rootfs=/host --web.listen-address=:{{ monitor_port }}
+       changed_when: true
+
+     - name: Set MOTD
+       ansible.builtin.copy:
+         dest: /etc/motd
+         content: "Ansible Managed by {{ motd_user }}\n"
+         mode: "0644"

@@ -1,0 +1,7 @@
+motd_user: ""
+nginx_port: 8080
+nginx_container: "web_nginx"
+nginx_image: "nginx:stable"
+monitor_container: "node_exporter"
+monitor_image: "prom/node-exporter:latest"
+monitor_port: 9100
